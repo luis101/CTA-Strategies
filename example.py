@@ -30,7 +30,7 @@ from cta_strategies.data import build_continuous_futures, build_nearest_futures
 ###### Synthetic Data
 
 def generate_synthetic_prices(
-    n_days: int = 2520,  # ~10 years
+    n_days: int = 2620,  # ~10 years
     mu: float = 0.05,    # annual drift
     sigma: float = 0.20, # annual volatility
     seed: int = 42,
@@ -46,8 +46,8 @@ def generate_synthetic_prices(
     np.random.seed(seed)
     dt = 1 / 252
     
-    # Base dates (2016-01-02 to 2026-01-02) 10 years of data
-    dates = pd.bdate_range(start="2016-01-02", periods=n_days)
+    # Base dates (2016-03-02 to 2026-01-02) 10 years of data
+    dates = pd.bdate_range(start="2016-03-02", periods=n_days)
     
     mid = n_days // 2
     drifts = np.concatenate([
@@ -127,14 +127,14 @@ def main():
 
     # Generate data
     raw_futures = generate_synthetic_prices()
-    prices = build_continuous_futures(raw_futures, method="ratio")
+    price_data = build_continuous_futures(raw_futures, method="ratio")
+    prices = price_data['price']
     
     rate_a, rate_b = generate_synthetic_rates(prices.index)
 
     print(f"Synthetic raw futures contracts: {len(raw_futures)} rows")
     print(f"Continuous series length: {len(prices)} days "
           f"({prices.index[0].date()} — {prices.index[-1].date()})")
-    print()
 
     # Define strategies
     strategies = [

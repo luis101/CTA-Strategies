@@ -41,7 +41,7 @@ class PerformanceMetrics:
         self.profit_factor = profit_factor
 
     @classmethod
-    def from_returns(cls, returns: pd.DataFrame, returns_col: str = 'return', 
+    def from_returns(cls, returns: pd.Series, returns_col: str = 'return', 
                      risk_free_rate: float = 0.0, periods_per_year: int = 252) -> "PerformanceMetrics":
         """
         Compute metrics from a simple-returns series.
@@ -50,10 +50,8 @@ class PerformanceMetrics:
         ----------
         cls : type
             Class of the performance metrics.
-        returns : pd.DataFrame
+        returns : pd.Series
             Daily (or periodic) simple returns.
-        returns_col : str
-            Column name of the returns series.
         risk_free_rate : float
             Annualized risk-free rate for Sharpe computation.
         periods_per_year : int
@@ -64,7 +62,7 @@ class PerformanceMetrics:
             return cls()
 
         # Equity curve
-        equity = (1 + returns[returns_col]).cumprod()
+        equity = (1 + returns).cumprod()
 
         # Total & annualized return
         total_ret = equity.iloc[-1] / equity.iloc[0] - 1
@@ -72,13 +70,13 @@ class PerformanceMetrics:
         ann_ret = (1 + total_ret) ** (1 / n_years) - 1 if n_years > 0 else 0.0
 
         # Annualized volatility
-        ann_vol = returns[returns_col].std() * np.sqrt(periods_per_year)
+        ann_vol = returns.std() * np.sqrt(periods_per_year)
 
         # Sharpe ratio
-        excess = returns[returns_col].mean() - risk_free_rate / periods_per_year
+        excess = returns.mean() - risk_free_rate / periods_per_year
         sharpe = (
-            excess / returns[returns_col].std() * np.sqrt(periods_per_year)
-            if returns[returns_col].std() > 0
+            excess / returns.std() * np.sqrt(periods_per_year)
+            if returns.std() > 0
             else 0.0
         )
 
@@ -91,8 +89,8 @@ class PerformanceMetrics:
         calmar = ann_ret / abs(max_dd) if max_dd != 0 else 0.0
 
         # Hit rate, average win/loss, profit factor
-        wins = returns[returns[returns_col] > 0][returns_col]
-        losses = returns[returns[returns_col] < 0][returns_col]
+        wins = returns[returns > 0]
+        losses = returns[returns < 0]
         hit_rate = len(wins) / len(returns) if len(returns) > 0 else 0.0
         avg_win = wins.mean() if len(wins) > 0 else 0.0
         avg_loss = losses.mean() if len(losses) > 0 else 0.0

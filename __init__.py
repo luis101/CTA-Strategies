@@ -1,16 +1,14 @@
 """
 Classical CTA-Style Futures and FX Strategies
-==============================================
 
-A modularized Python package implementing the strategies described in
-Section 5.1.1 of *Deep Learning in Quantitative Trading*:
+A modularized Python package implementing the following strategies:
 
 - **Long-Only Benchmark**
-- **Volatility Targeting** (Eq. 70)
-- **Time-Series Momentum (TSMOM)** (Eq. 71)
-- **SMA Crossover** (Eq. 72)
-- **MACD** (single & combined multi-scale) (Eqs. 73–74)
-- **FX Carry Trading** (Eqs. 75–76)
+- **Volatility Targeting**
+- **Time-Series Momentum (TSMOM)**
+- **SMA Crossover**
+- **MACD** (single & combined multi-scale)
+- **FX Carry Trading**
 
 Usage
 -----
@@ -43,7 +41,7 @@ from .data import (
 
 # Signal generators
 from .signals import (
-    tsmom_signal,
+    time_series_momentum_signal,
     sma_crossover_signal,
     macd_signal,
     combined_macd_signal,
@@ -52,10 +50,10 @@ from .signals import (
 
 # Risk management
 from .risk import (
-    estimate_volatility,
+    realized_volatility,
     volatility_target_sizing,
-    apply_leverage_cap,
-    apply_drawdown_stop,
+    leverage_cap,
+    drawdown_stop,
 )
 
 # Backtester
@@ -76,16 +74,16 @@ __all__ = [
     "build_continuous_futures",
     "compute_returns",
     # Signals
-    "tsmom_signal",
+    "time_series_momentum_signal",
     "sma_crossover_signal",
     "macd_signal",
     "combined_macd_signal",
     "carry_signal",
     # Risk
-    "estimate_volatility",
+    "realized_volatility",
     "volatility_target_sizing",
-    "apply_leverage_cap",
-    "apply_drawdown_stop",
+    "leverage_cap",
+    "drawdown_stop",
     # Backtester
     "BacktestEngine",
     "BacktestResult",
