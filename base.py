@@ -3,46 +3,57 @@ Base classes and performance metrics for CTA strategies.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+# from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 
 
-# ---------------------------------------------------------------------------
-# Performance Metrics
-# ---------------------------------------------------------------------------
+###### Performance Metrics
 
-@dataclass
 class PerformanceMetrics:
+    
     """Computes and stores standard performance metrics from a returns series."""
 
-    total_return: float = 0.0
-    annualized_return: float = 0.0
-    annualized_volatility: float = 0.0
-    sharpe_ratio: float = 0.0
-    max_drawdown: float = 0.0
-    calmar_ratio: float = 0.0
-    hit_rate: float = 0.0
-    avg_win: float = 0.0
-    avg_loss: float = 0.0
-    profit_factor: float = 0.0
+    def __init__(
+        self,
+        total_return: float = 0.0,
+        annualized_return: float = 0.0,
+        annualized_volatility: float = 0.0,
+        sharpe_ratio: float = 0.0,
+        max_drawdown: float = 0.0,
+        calmar_ratio: float = 0.0,
+        hit_rate: float = 0.0,
+        avg_win: float = 0.0,
+        avg_loss: float = 0.0,
+        profit_factor: float = 0.0):
+
+        self.total_return = total_return
+        self.annualized_return = annualized_return
+        self.annualized_volatility = annualized_volatility
+        self.sharpe_ratio = sharpe_ratio
+        self.max_drawdown = max_drawdown
+        self.calmar_ratio = calmar_ratio
+        self.hit_rate = hit_rate
+        self.avg_win = avg_win
+        self.avg_loss = avg_loss
+        self.profit_factor = profit_factor
 
     @classmethod
-    def from_returns(
-        cls,
-        returns: pd.Series,
-        risk_free_rate: float = 0.0,
-        periods_per_year: int = 252,
-    ) -> "PerformanceMetrics":
+    def from_returns(cls, returns: pd.DataFrame, returns_col: str = 'return', 
+                     risk_free_rate: float = 0.0, periods_per_year: int = 252) -> "PerformanceMetrics":
         """
         Compute metrics from a simple-returns series.
 
         Parameters
         ----------
-        returns : pd.Series
+        cls : type
+            Class of the performance metrics.
+        returns : pd.DataFrame
             Daily (or periodic) simple returns.
+        returns_col : str
+            Column name of the returns series.
         risk_free_rate : float
             Annualized risk-free rate for Sharpe computation.
         periods_per_year : int
@@ -53,7 +64,7 @@ class PerformanceMetrics:
             return cls()
 
         # Equity curve
-        equity = (1 + returns).cumprod()
+        equity = (1 + returns[returns_col]).cumprod()
 
         # Total & annualized return
         total_ret = equity.iloc[-1] / equity.iloc[0] - 1
@@ -61,13 +72,13 @@ class PerformanceMetrics:
         ann_ret = (1 + total_ret) ** (1 / n_years) - 1 if n_years > 0 else 0.0
 
         # Annualized volatility
-        ann_vol = returns.std() * np.sqrt(periods_per_year)
+        ann_vol = returns[returns_col].std() * np.sqrt(periods_per_year)
 
         # Sharpe ratio
-        excess = returns.mean() - risk_free_rate / periods_per_year
+        excess = returns[returns_col].mean() - risk_free_rate / periods_per_year
         sharpe = (
-            excess / returns.std() * np.sqrt(periods_per_year)
-            if returns.std() > 0
+            excess / returns[returns_col].std() * np.sqrt(periods_per_year)
+            if returns[returns_col].std() > 0
             else 0.0
         )
 
@@ -79,13 +90,13 @@ class PerformanceMetrics:
         # Calmar ratio
         calmar = ann_ret / abs(max_dd) if max_dd != 0 else 0.0
 
-        # Hit rate, avg win/loss, profit factor
-        wins = returns[returns > 0]
-        losses = returns[returns < 0]
-        hit = len(wins) / len(returns) if len(returns) > 0 else 0.0
-        avg_w = wins.mean() if len(wins) > 0 else 0.0
-        avg_l = losses.mean() if len(losses) > 0 else 0.0
-        pf = (
+        # Hit rate, average win/loss, profit factor
+        wins = returns[returns[returns_col] > 0][returns_col]
+        losses = returns[returns[returns_col] < 0][returns_col]
+        hit_rate = len(wins) / len(returns) if len(returns) > 0 else 0.0
+        avg_win = wins.mean() if len(wins) > 0 else 0.0
+        avg_loss = losses.mean() if len(losses) > 0 else 0.0
+        profit_factor = (
             wins.sum() / abs(losses.sum())
             if len(losses) > 0 and losses.sum() != 0
             else float("inf")
@@ -98,10 +109,10 @@ class PerformanceMetrics:
             sharpe_ratio=sharpe,
             max_drawdown=max_dd,
             calmar_ratio=calmar,
-            hit_rate=hit,
-            avg_win=avg_w,
-            avg_loss=avg_l,
-            profit_factor=pf,
+            hit_rate=hit_rate,
+            avg_win=avg_win,
+            avg_loss=avg_loss,
+            profit_factor=profit_factor,
         )
 
     def summary(self) -> pd.Series:
@@ -122,13 +133,12 @@ class PerformanceMetrics:
         )
 
 
-# ---------------------------------------------------------------------------
-# Abstract Strategy
-# ---------------------------------------------------------------------------
+###### Abstract Strategy
 
 class Strategy(ABC):
     """
     Abstract base class for all CTA-style trading strategies.
+    Ensures that all strategies have the same interface.
 
     Subclasses must implement:
         - generate_signals: produce raw directional signals

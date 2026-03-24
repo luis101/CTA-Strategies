@@ -1,39 +1,42 @@
 """
-Backtesting engine for CTA strategies.
+Backtesting engine for CTA strategies
 
 Runs strategies against historical price data and produces performance
-reports with equity curves, drawdowns, and key metrics.
+reports with equity values, drawdowns, and key metrics.
 """
 
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
+# from dataclasses import dataclass, field
+import matplotlib.pyplot as plt
 
 from .base import Strategy, PerformanceMetrics
 from .data import compute_returns
-from .risk import apply_drawdown_stop
+from .risk import drawdown_stop
 
 
-@dataclass
 class BacktestResult:
     """Container for backtesting results."""
 
-    strategy_name: str
-    equity_curve: pd.Series
-    returns: pd.Series
-    positions: pd.Series
-    signals: pd.Series
-    metrics: PerformanceMetrics
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    def __init__(self, strategy_name: str, equity_value: pd.Series, 
+                 returns: pd.Series, positions: pd.Series, signals: pd.Series,
+                 metrics: PerformanceMetrics, metadata: dict = None):
+        self.strategy_name = strategy_name
+        self.equity_value = equity_value
+        self.returns = returns
+        self.positions = positions
+        self.signals = signals
+        self.metrics = metrics
+        self.metadata = metadata
 
     def summary(self) -> pd.Series:
         """Return a readable summary of performance metrics."""
         return self.metrics.summary()
 
-    def plot(self, figsize: tuple = (14, 8), show: bool = True):
+    def plot_performance(self, figsize: tuple = (14, 8), show: bool = True):
         """
-        Plot equity curve and drawdown.
+        Plot equity value and drawdown
 
         Parameters
         ----------
@@ -42,31 +45,23 @@ class BacktestResult:
         show : bool
             If True, call plt.show().
         """
-        import matplotlib.pyplot as plt
-
         fig, axes = plt.subplots(3, 1, figsize=figsize, sharex=True,
                                   gridspec_kw={"height_ratios": [3, 1, 1]})
-        fig.suptitle(f"Backtest: {self.strategy_name}", fontsize=14,
-                     fontweight="bold")
+        fig.suptitle(f"Backtest: {self.strategy_name}", fontsize=14, fontweight="bold")
 
-        # Equity curve
+        # Equity value
         ax1 = axes[0]
-        self.equity_curve.plot(ax=ax1, color="#2196F3", linewidth=1.2)
+        self.equity_value.plot(ax=ax1, color="#2196F3", linewidth=1.2)
         ax1.set_ylabel("Equity")
-        ax1.set_title("Equity Curve")
+        ax1.set_title("Equity Value")
         ax1.grid(True, alpha=0.3)
-        ax1.fill_between(
-            self.equity_curve.index,
-            1.0,
-            self.equity_curve.values,
-            alpha=0.08,
-            color="#2196F3",
-        )
+        ax1.fill_between(self.equity_value.index, 1.0, self.equity_value.values,
+                         alpha=0.08, color="#2196F3")
 
         # Drawdown
         ax2 = axes[1]
-        peak = self.equity_curve.cummax()
-        drawdown = (self.equity_curve - peak) / peak
+        peak = self.equity_value.cummax()
+        drawdown = (self.equity_value - peak) / peak
         drawdown.plot(ax=ax2, color="#F44336", linewidth=0.8)
         ax2.fill_between(drawdown.index, 0, drawdown.values,
                          alpha=0.2, color="#F44336")
@@ -90,55 +85,44 @@ class BacktestResult:
 
 class BacktestEngine:
     """
-    Vectorized backtesting engine for CTA strategies.
+    Backtesting engine for CTA strategies
 
     Parameters
     ----------
     transaction_cost_bps : float
-        One-way transaction cost in basis points (default: 5 bps).
+        One-way transaction cost in basis points (default assumption: 5 bps)
     max_drawdown_stop : float, optional
-        If set, flatten positions when drawdown exceeds this threshold.
+        If set, flatten positions when drawdown exceeds this threshold
     risk_free_rate : float
-        Annualized risk-free rate for Sharpe calculation.
+        Annualized risk-free rate for Sharpe ratio calculation (default assumption: 0%)
     periods_per_year : int
-        Trading periods per year (252 for daily).
+        Trading periods per year (252 for daily, 12 for monthly)
     """
 
-    def __init__(
-        self,
-        transaction_cost_bps: float = 5.0,
-        max_drawdown_stop: Optional[float] = None,
-        risk_free_rate: float = 0.0,
-        periods_per_year: int = 252,
-    ):
+    def __init__(self, transaction_cost_bps: float = 5.0, max_drawdown_stop: Optional[float] = None,
+                 risk_free_rate: float = 0.0, periods_per_year: int = 252):
         self.tc_bps = transaction_cost_bps
         self.max_drawdown_stop = max_drawdown_stop
         self.risk_free_rate = risk_free_rate
         self.periods_per_year = periods_per_year
 
-    def run(
-        self,
-        strategy: Strategy,
-        prices: pd.Series,
-        **kwargs,
-    ) -> BacktestResult:
+    def run(self, strategy: Strategy, prices: pd.Series, **kwargs) -> BacktestResult:
         """
-        Run a backtest for a given strategy and price series.
+        Run a backtest for a given strategy and price series
 
         Parameters
         ----------
         strategy : Strategy
-            A strategy instance implementing :meth:`get_positions`.
+            A strategy instance
         prices : pd.Series
-            Price series to backtest against.
+            Price series to backtest against
         **kwargs
-            Additional keyword arguments passed to
-            ``strategy.get_positions()``.
+            Additional keyword arguments passed to strategy.get_positions()
 
         Returns
         -------
         BacktestResult
-            Full backtest results with equity curve, positions, and metrics.
+            Full backtest results with equity value, returns, positions, signals, and metrics
         """
         # Generate positions (signal + risk sizing)
         positions = strategy.get_positions(prices, **kwargs)
@@ -165,7 +149,7 @@ class BacktestEngine:
 
         # Optional drawdown stop
         if self.max_drawdown_stop is not None:
-            lagged_positions = apply_drawdown_stop(
+            lagged_positions = drawdown_stop(
                 equity, lagged_positions, max_drawdown_pct=self.max_drawdown_stop,
             )
             # Recompute with stopped positions
@@ -178,9 +162,7 @@ class BacktestEngine:
         # Compute metrics
         clean_returns = strategy_returns.dropna()
         metrics = PerformanceMetrics.from_returns(
-            clean_returns,
-            risk_free_rate=self.risk_free_rate,
-            periods_per_year=self.periods_per_year,
+            clean_returns, risk_free_rate=self.risk_free_rate, periods_per_year=self.periods_per_year,
         )
 
         # Generate raw signals for reference
@@ -190,36 +172,27 @@ class BacktestEngine:
             signals = pd.Series(np.nan, index=prices.index)
 
         return BacktestResult(
-            strategy_name=strategy.name,
-            equity_curve=equity,
-            returns=strategy_returns,
-            positions=lagged_positions,
-            signals=signals,
-            metrics=metrics,
+            strategy_name=strategy.name, equity_value=equity, returns=strategy_returns, 
+            positions=lagged_positions, signals=signals, metrics=metrics,
         )
 
-    def compare(
-        self,
-        strategies: list,
-        prices: pd.Series,
-        kwargs_list: Optional[list] = None,
-    ) -> pd.DataFrame:
+    def compare(self, strategies: list, prices: pd.Series, kwargs_list: Optional[list] = None) -> pd.DataFrame:
         """
-        Run multiple strategies and compare their performance.
+        Run multiple strategies and compare their performance
 
         Parameters
         ----------
         strategies : list[Strategy]
-            List of strategy instances.
+            List of strategies
         prices : pd.Series
-            Shared price series.
+            Shared price series
         kwargs_list : list[dict], optional
-            Per-strategy keyword arguments.
+            Per-strategy keyword arguments
 
         Returns
         -------
         pd.DataFrame
-            Comparison table with one row per strategy.
+            Comparison table with one row per strategy
         """
         if kwargs_list is None:
             kwargs_list = [{}] * len(strategies)

@@ -1,15 +1,17 @@
 """
-End-to-end demo of the CTA strategies package.
+End-to-end demo of the CTA strategies package
 
-Generates synthetic futures prices (geometric Brownian motion with embedded
-trend), runs every strategy through the backtester, and prints a comparison
-table.
+This example script generates synthetic futures prices (geometric Brownian motion with embedded
+trend), runs every strategy through the backtester, and prints a comparison table.
 """
 
 import sys
 import os
 import numpy as np
 import pandas as pd
+
+import matplotlib
+import matplotlib.pyplot as plt
 
 # Ensure the parent directory is on the path so we can import cta_strategies
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,10 +24,10 @@ from cta_strategies import (
     CarryStrategy,
     BacktestEngine,
 )
-from cta_strategies.data import build_continuous_futures
+from cta_strategies.data import build_continuous_futures, build_nearest_futures
 
 
-# ── Synthetic Data ────────────────────────────────────────────────────────
+###### Synthetic Data
 
 def generate_synthetic_prices(
     n_days: int = 2520,  # ~10 years
@@ -33,17 +35,19 @@ def generate_synthetic_prices(
     sigma: float = 0.20, # annual volatility
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Generate a DataFrame of hypothetical futures prices.
+    """
+    Generate a DataFrame of hypothetical futures prices
     
-    Creates a simulated price series using geometric Brownian motion with
-    an embedded trend, and structures it into 24 futures contracts
-    expiring on the last Friday of each month up to 2 years out.
+    Creates a simulated price series using geometric Brownian motion with an embedded trend, 
+    and structures it into 24 futures contracts expiring on the last Friday of each month up to 2 years out.
+
+    We can just test using these 24 contracts, as they are continuously rolled.
     """
     np.random.seed(seed)
     dt = 1 / 252
     
-    # Base dates
-    dates = pd.bdate_range(start="2014-01-02", periods=n_days)
+    # Base dates (2016-01-02 to 2026-01-02) 10 years of data
+    dates = pd.bdate_range(start="2016-01-02", periods=n_days)
     
     mid = n_days // 2
     drifts = np.concatenate([
@@ -51,6 +55,7 @@ def generate_synthetic_prices(
         np.full(n_days - mid, mu * 0.3),  # weaker trend
     ])
     
+    # Linearized geometric Brownian motion with drift and volatility
     log_returns = (drifts * dt
                    - 0.5 * sigma**2 * dt
                    + sigma * np.sqrt(dt) * np.random.randn(n_days))
@@ -68,8 +73,8 @@ def generate_synthetic_prices(
     rows = []
     expiry_array = expiry_dates.values
     
-    for date, sp in zip(dates, spot_prices):
-        # find the index of the first expiry date >= current date
+    for date, spot in zip(dates, spot_prices):
+        # Find the index of the first expiry date >= current date
         idx = np.searchsorted(expiry_array, date.to_datetime64())
         
         # Take the next 24 expirations
@@ -77,14 +82,14 @@ def generate_synthetic_prices(
         
         for contract_idx, exp in enumerate(active_expiries):
             # Simplistic pricing model for out-of-the-money contracts
-            fut_price = sp * (1 + 0.001 * contract_idx)
+            future_price = spot * (1 + 0.001 * contract_idx)
             month_str = pd.Timestamp(exp).strftime('%Y%m')
             
             rows.append({
                 'date': date,
                 'expire_date': exp,
                 'future_contract': f"FUT_{month_str}",
-                'price': fut_price
+                'price': future_price
             })
             
     df = pd.DataFrame(rows)
@@ -112,7 +117,7 @@ def generate_synthetic_rates(
     )
 
 
-# ── Main ──────────────────────────────────────────────────────────────────
+###### Main function
 
 def main():
     print("=" * 70)
@@ -133,20 +138,20 @@ def main():
 
     # Define strategies
     strategies = [
-        LongOnlyBenchmark(name="Long-Only (no vol target)"),
-        LongOnlyBenchmark(vol_target=0.15, name="Long-Only (vol_tgt=15%)"),
-        TSMOMStrategy(lookback_k=252, vol_target=0.15, name="TSMOM 12m"),
-        TSMOMStrategy(lookback_k=63, vol_target=0.15, name="TSMOM 3m"),
+        LongOnlyBenchmark(name="Long-Only (no volatility target)"),
+        LongOnlyBenchmark(vol_target=0.15, name="Long-Only (volatility target=15%)"),
+        TSMOMStrategy(lookback_k=252, vol_target=0.15, name="Time Series Momentum 12m"),
+        TSMOMStrategy(lookback_k=63, vol_target=0.15, name="Time Series Momentum 3m"),
         SMACrossoverStrategy(
             short_window=50, long_window=200, vol_target=0.15,
-            name="SMA(50/200)",
+            name="SMA Crossover (50/200)",
         ),
         MACDStrategy(
             use_combined=True, vol_target=0.15, name="MACD Combined",
         ),
         MACDStrategy(
             use_combined=False, short_span=12, long_span=26,
-            vol_target=0.15, name="MACD(12/26)",
+            vol_target=0.15, name="MACD (12/26)",
         ),
         CarryStrategy(vol_target=0.15, name="FX Carry"),
     ]
@@ -155,8 +160,8 @@ def main():
     kwargs_list = [{}] * 7 + [{"rate_a": rate_a, "rate_b": rate_b}]
 
     # Run backtests
-    engine = BacktestEngine(transaction_cost_bps=5)
-    comparison = engine.compare(strategies, prices, kwargs_list=kwargs_list)
+    backtest_engine = BacktestEngine(transaction_cost_bps=5)
+    comparison = backtest_engine.compare(strategies, prices, kwargs_list=kwargs_list)
 
     print("-- Performance Comparison " + "-" * 44)
     print()
@@ -165,31 +170,22 @@ def main():
     print("=" * 70)
 
     # Plot individual results
-    try:
-        import matplotlib
-        matplotlib.use("Agg")  # non-interactive backend
-        import matplotlib.pyplot as plt
+    matplotlib.use("Agg")  # non-interactive backend
 
-        fig, ax = plt.subplots(figsize=(14, 6))
-        for strat, kw in zip(strategies, kwargs_list):
-            result = engine.run(strat, prices, **kw)
-            result.equity_curve.plot(ax=ax, label=strat.name, linewidth=1.0)
+    fig, ax = plt.subplots(figsize=(14, 6))
+    for strategy, kw in zip(strategies, kwargs_list):
+        result = backtest_engine.run(strategy, prices, **kw)
+        result.equity_value.plot(ax=ax, label=strategy.name, linewidth=1.0)
 
-        ax.set_title("Equity Curves — All Strategies", fontsize=14,
-                      fontweight="bold")
-        ax.set_ylabel("Equity (starting = 1.0)")
-        ax.legend(loc="upper left", fontsize=8)
-        ax.grid(True, alpha=0.3)
-        plt.tight_layout()
+    ax.set_title("Equity Values — All Strategies", fontsize=14, fontweight="bold")
+    ax.set_ylabel("Equity (starting value = 1.0)")
+    ax.legend(loc="upper left", fontsize=8)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
 
-        out_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "equity_curves.png",
-        )
-        fig.savefig(out_path, dpi=150)
-        print(f"Equity curve plot saved to: {out_path}")
-    except ImportError:
-        print("(matplotlib not available — skipping plot)")
+    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "equity_values.png")
+    fig.savefig(out_path, dpi=150)
+    print(f"Equity values plot saved to: {out_path}")
 
     print("\nDone.")
 

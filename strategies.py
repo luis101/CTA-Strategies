@@ -1,8 +1,8 @@
 """
-Concrete CTA strategy implementations.
+Concrete CTA strategy implementations
 
-Each strategy inherits from :class:`base.Strategy` and combines a signal
-generator with optional volatility targeting.
+Each strategy inherits from base.Strategy and combines 
+a signal generator with optional volatility targeting.
 """
 
 import numpy as np
@@ -11,13 +11,13 @@ from typing import List, Optional, Tuple
 
 from .base import Strategy
 from .signals import (
-    tsmom_signal,
+    time_series_momentum_signal,
     sma_crossover_signal,
     macd_signal,
     combined_macd_signal,
     carry_signal,
 )
-from .risk import volatility_target_sizing, apply_leverage_cap
+from .risk import volatility_target_sizing, leverage_cap
 from .data import compute_returns
 
 
@@ -25,8 +25,8 @@ class LongOnlyBenchmark(Strategy):
     """
     Long-only benchmark strategy.
 
-    Always holds a full long position (+1).  Serves as the baseline for
-    evaluating active strategies.  Optionally applies volatility targeting.
+    Always holds a full long position (+1). Serves as the baseline for
+    evaluating active strategies. Optionally applies volatility targeting.
     """
 
     def __init__(
@@ -58,18 +58,18 @@ class TSMOMStrategy(Strategy):
     Time-series momentum strategy.
 
     Goes long when the cumulative return over the look-back period is positive,
-    and short when it is negative.  (Eq. 71)
+    and short when it is negative.
 
     Parameters
     ----------
     lookback_k : int
-        Look-back period for cumulative return (default: 252 ≈ 12 months).
+        Look-back period for cumulative return (default: 252 ≈ 12 months)
     vol_target : float, optional
-        If set, applies volatility targeting (Eq. 70).
+        If set, applies volatility targeting
     vol_lookback : int
-        Look-back for volatility estimation.
+        Look-back for volatility estimation
     max_leverage : float
-        Maximum absolute position size.
+        Maximum absolute position size
     """
 
     def __init__(
@@ -88,11 +88,11 @@ class TSMOMStrategy(Strategy):
 
     def generate_signals(self, prices: pd.Series, **kwargs) -> pd.Series:
         returns = compute_returns(prices)
-        return tsmom_signal(returns, lookback_k=self.lookback_k)
+        return time_series_momentum_signal(returns, lookback_k=self.lookback_k)
 
     def get_positions(self, prices: pd.Series, **kwargs) -> pd.Series:
         returns = compute_returns(prices)
-        signals = tsmom_signal(returns, lookback_k=self.lookback_k)
+        signals = time_series_momentum_signal(returns, lookback_k=self.lookback_k)
 
         if self.vol_target is not None:
             positions = volatility_target_sizing(
@@ -102,21 +102,21 @@ class TSMOMStrategy(Strategy):
         else:
             positions = signals
 
-        return apply_leverage_cap(positions, max_leverage=self.max_leverage)
+        return leverage_cap(positions, max_leverage=self.max_leverage)
 
 
 class SMACrossoverStrategy(Strategy):
     """
-    Simple moving-average crossover strategy.  (Eq. 72)
+    Simple moving-average crossover strategy
 
     Goes long when the short SMA is above the long SMA, and short otherwise.
 
     Parameters
     ----------
     short_window : int
-        Short SMA period K1 (default: 50).
+        Short SMA period K1 (default: 50)
     long_window : int
-        Long SMA period K2 (default: 200).
+        Long SMA period K2 (default: 200)
     """
 
     def __init__(
@@ -152,26 +152,26 @@ class SMACrossoverStrategy(Strategy):
             )
         else:
             positions = signals
-        return apply_leverage_cap(positions, max_leverage=self.max_leverage)
+        return leverage_cap(positions, max_leverage=self.max_leverage)
 
 
 class MACDStrategy(Strategy):
     """
-    MACD trend-following strategy.  (Eqs. 73–74)
+    MACD trend-following strategy
 
     Can operate with a single MACD signal or combine multiple time-scales.
 
     Parameters
     ----------
     pairs : list of (short_span, long_span), optional
-        If provided, uses the combined multi-scale MACD (Eq. 74).
-        Default: ``[(8, 24), (16, 48), (32, 96)]``.
+        If provided, uses the combined multi-scale MACD
+        Default: [(8, 24), (16, 48), (32, 96)]
     short_span : int
-        Short EWMA span for single-pair mode.
+        Short EWMA span for single-pair mode
     long_span : int
-        Long EWMA span for single-pair mode.
+        Long EWMA span for single-pair mode
     use_combined : bool
-        If True, use combined multi-scale MACD.
+        If True, use combined multi-scale MACD
     """
 
     def __init__(
@@ -213,12 +213,12 @@ class MACDStrategy(Strategy):
             )
         else:
             positions = signals
-        return apply_leverage_cap(positions, max_leverage=self.max_leverage)
+        return leverage_cap(positions, max_leverage=self.max_leverage)
 
 
 class CarryStrategy(Strategy):
     """
-    FX carry trade strategy.  (Eqs. 75–76)
+    FX carry trade strategy
 
     Goes long the higher-yielding currency and short the lower-yielding one,
     exploiting the interest rate differential (IRD).
@@ -226,9 +226,9 @@ class CarryStrategy(Strategy):
     Parameters
     ----------
     vol_target : float, optional
-        If set, applies volatility targeting.
+        If set, applies volatility targeting
     leverage : float
-        Leverage multiplier *l* in Eq. (76).
+        Leverage multiplier
     """
 
     def __init__(
@@ -245,40 +245,28 @@ class CarryStrategy(Strategy):
         self.leverage = leverage
         self.max_leverage = max_leverage
 
-    def generate_signals(
-        self,
-        prices: pd.Series,
-        rate_a: Optional[pd.Series] = None,
-        rate_b: Optional[pd.Series] = None,
-        **kwargs,
-    ) -> pd.Series:
+    def generate_signals(self, prices: pd.Series, rate_a: Optional[pd.Series] = None,
+        rate_b: Optional[pd.Series] = None, **kwargs) -> pd.Series:
         """
-        Generate carry signal from interest rate series.
+        Generate carry signal from interest rate series
 
         Parameters
         ----------
         prices : pd.Series
-            FX spot price series (used for index alignment).
+            FX spot price series (used for index alignment)
         rate_a : pd.Series
-            Interest rate of the long currency.
+            Interest rate of the long (funded) currency
         rate_b : pd.Series
-            Interest rate of the short (funding) currency.
+            Interest rate of the short (funding) currency
         """
         if rate_a is None or rate_b is None:
-            raise ValueError(
-                "CarryStrategy requires `rate_a` and `rate_b` interest rate "
-                "series passed as keyword arguments."
-            )
+            raise ValueError("Both rate_a and rate_b must be provided")
         sig = carry_signal(rate_a, rate_b)
         return sig.reindex(prices.index, method="ffill").fillna(0)
 
-    def get_positions(
-        self,
-        prices: pd.Series,
-        rate_a: Optional[pd.Series] = None,
-        rate_b: Optional[pd.Series] = None,
-        **kwargs,
-    ) -> pd.Series:
+    def get_positions(self, prices: pd.Series, rate_a: Optional[pd.Series] = None,
+        rate_b: Optional[pd.Series] = None, **kwargs) -> pd.Series:
+
         signals = self.generate_signals(prices, rate_a=rate_a, rate_b=rate_b)
         signals = signals * self.leverage
 
@@ -291,20 +279,14 @@ class CarryStrategy(Strategy):
         else:
             positions = signals
 
-        return apply_leverage_cap(positions, max_leverage=self.max_leverage)
+        return leverage_cap(positions, max_leverage=self.max_leverage)
 
-    def compute_daily_interest(
-        self,
-        rate_a: pd.Series,
-        rate_b: pd.Series,
-        notional: float,
-        leverage: float = 1.0,
-    ) -> pd.Series:
+    def compute_daily_interest(self, rate_a: pd.Series, rate_b: pd.Series,
+        notional: float, leverage: float = 1.0) -> pd.Series:
         """
-        Compute net daily interest earned from carry trade.  (Eq. 76)
+        Compute net daily interest earned from carry trade
 
-        .. math::
-            I = (i_A - i_B) \\times C \\times l / 365
+        I = (i_A - i_B) * C * l / 365
 
         Parameters
         ----------

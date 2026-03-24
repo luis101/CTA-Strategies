@@ -1,11 +1,11 @@
 """
-Signal generators for CTA-style trading strategies.
+Signals for CTA-style trading strategies
 
-Implements all signal formulas from Section 5.1.1:
-    - Time-series momentum (TSMOM) — Eq. (71)
-    - Simple moving average crossover (SMA) — Eq. (72)
-    - MACD (single and combined) — Eqs. (73)–(74)
-    - Carry signal — Eq. (75)
+Implements all signal formulas from:
+    - Time-series momentum (TSMOM)
+    - Simple moving average crossover (SMA)
+    - MACD (single and combined)
+    - Carry signal
 """
 
 import numpy as np
@@ -13,20 +13,14 @@ import pandas as pd
 from typing import List, Tuple, Optional
 
 
-# ---------------------------------------------------------------------------
-# Time-Series Momentum  (Eq. 71)
-# ---------------------------------------------------------------------------
+###### Time-Series Momentum
 
-def tsmom_signal(
-    returns: pd.Series,
-    lookback_k: int = 252,
-) -> pd.Series:
+def time_series_momentum_signal(returns: pd.Series, lookback_k: int = 252) -> pd.Series:
     """
     Time-series momentum signal: sign of the cumulative return
-    over the past *lookback_k* periods.
+    over the past lookback_k periods.
 
-    .. math::
-        Y_t = \\text{sign}(r_{t-k:t})
+    Y_t = sign(r_{t-k:t})
 
     Parameters
     ----------
@@ -44,20 +38,13 @@ def tsmom_signal(
     return np.sign(cum_ret)
 
 
-# ---------------------------------------------------------------------------
-# Simple Moving Average Crossover  (Eq. 72)
-# ---------------------------------------------------------------------------
+###### Simple Moving Average Crossover
 
-def sma_crossover_signal(
-    prices: pd.Series,
-    short_window: int = 50,
-    long_window: int = 200,
-) -> pd.Series:
+def sma_crossover_signal(prices: pd.Series, short_window: int = 50, long_window: int = 200) -> pd.Series:
     """
-    SMA crossover signal.
+    Simple moving average crossover signal.
 
-    .. math::
-        Y_t = \\text{SMA}(t, K_1) - \\text{SMA}(t, K_2)
+    Y_t = SMA(t, K_1) - SMA(t, K_2)
 
     Positive → long, negative → short.
 
@@ -80,20 +67,13 @@ def sma_crossover_signal(
     return sma_short - sma_long
 
 
-# ---------------------------------------------------------------------------
-# MACD  (Eqs. 73–74)
-# ---------------------------------------------------------------------------
+###### MACD
 
-def macd_signal(
-    prices: pd.Series,
-    short_span: int = 12,
-    long_span: int = 26,
-) -> pd.Series:
+def macd_signal(prices: pd.Series, short_span: int = 12, long_span: int = 26) -> pd.Series:
     """
     MACD signal (single pair of time-scales).
 
-    .. math::
-        \\text{MACD}(t, S, L) = \\text{EWMA}(t, S) - \\text{EWMA}(t, L)
+    MACD(t, S, L) = EWMA(t, S) - EWMA(t, L)
 
     where α = 2 / (span + 1).
 
@@ -116,18 +96,13 @@ def macd_signal(
     return ewma_short - ewma_long
 
 
-def combined_macd_signal(
-    prices: pd.Series,
-    pairs: Optional[List[Tuple[int, int]]] = None,
-) -> pd.Series:
+def combined_macd_signal(prices: pd.Series, pairs: Optional[List[Tuple[int, int]]] = None) -> pd.Series:
     """
-    Combined MACD signal: sum of multiple MACD signals at different
-    time-scales. (Eq. 74)
+    Combined MACD signal: sum of multiple MACD signals at different time-scales.
 
-    .. math::
-        \\tilde{Y}_t = \\sum_{k=1}^{K} Y_t(S_k, L_k)
+    Y_t = sum_{k=1}^{K} Y_t(S_k, L_k)
 
-    Default pairs follow the paper: S ∈ {8, 16, 32}, L ∈ {24, 48, 96}.
+    Default pairs: S ∈ {8, 16, 32}, L ∈ {24, 48, 96}.
 
     Parameters
     ----------
@@ -150,19 +125,13 @@ def combined_macd_signal(
     return combined
 
 
-# ---------------------------------------------------------------------------
-# Carry Signal  (Eq. 75)
-# ---------------------------------------------------------------------------
+###### Carry
 
-def carry_signal(
-    rate_a: pd.Series,
-    rate_b: pd.Series,
-) -> pd.Series:
+def carry_signal(rate_a: pd.Series, rate_b: pd.Series) -> pd.Series:
     """
     Carry (interest rate differential) signal for FX pairs.
 
-    .. math::
-        \\text{IRD} = i_A - i_B
+    IRD = i_A - i_B
 
     Positive IRD → long Currency A / short Currency B.
 
